@@ -4,10 +4,10 @@ import google.generativeai as genai
 import os
 import re
 
-# ✅ Configure API Key securely
+# ✅ Configure API Key securely for Gemini 2.5 Pro Experimental
 if "GOOGLE_API_KEY" in st.secrets:
     api_key = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=api_key)
+    genai.configure(api_key=api_key, experimental=True)
 else:
     st.error("⚠️ API Key is missing. Go to Streamlit Cloud → Settings → Secrets and add your API key.")
     st.stop()
@@ -20,11 +20,15 @@ if not os.path.exists(leaderboard_file):
     df_init.to_csv(leaderboard_file, index=False)
 
 def get_ai_response(prompt, fallback_message="⚠️ AI response unavailable. Please try again later."):
-    """Generates AI response using Gemini 1.5 Pro."""
+    """Generates AI response using Gemini 2.5 Pro Experimental."""
     try:
-        model = genai.GenerativeModel("gemini-1.5-pro")
+        model = genai.GenerativeModel("gemini-2.5-pro-experimental")
         response = model.generate_content(prompt)
-        return response.text.strip() if hasattr(response, "text") and response.text.strip() else fallback_message
+        if hasattr(response, "text"):
+            return response.text.strip()
+        elif hasattr(response, "parts"):  # Handle structured responses
+            return "\n".join([part.text for part in response.parts])
+        return fallback_message
     except Exception as e:
         return f"⚠️ AI Error: {str(e)}\n{fallback_message}"
 
@@ -66,7 +70,7 @@ def extract_score(feedback):
 def update_leaderboard(player, score):
     df = pd.read_csv(leaderboard_file)
     if player in df["Player"].values:
-        df.loc[df["Player"] == player, "Score"] += score
+        df.loc[df["Player"] == player, "Score"] = df.loc[df["Player"] == player, "Score"].values[0] + score
     else:
         df = pd.concat([df, pd.DataFrame({"Player": [player], "Score": [score]})], ignore_index=True)
     df.to_csv(leaderboard_file, index=False)
@@ -77,13 +81,22 @@ def display_leaderboard():
     st.dataframe(df)
 
 def ai_generate_game_elements():
-    """Generates all AI-driven game elements in one function."""
+    """Generates AI-driven game elements efficiently in one call."""
     if "scenario" not in st.session_state:
-        st.session_state.scenario = generate_ai_scenario()
-    scenario = st.session_state.scenario
-    hint = get_ai_hint(scenario)
-    suggestions = get_ai_suggestions(scenario)
-    return scenario, hint, suggestions
+        prompt = """
+        Generate:
+        - A realistic restaurant management scenario
+        - A short hint for decision-making
+        - 4 multiple-choice options labeled A, B, C, and D
+        """
+        response = get_ai_response(prompt)
+        
+        parts = response.split("\n\n")  # Assuming AI separates sections with line breaks
+        st.session_state.scenario = parts[0] if len(parts) > 0 else "Scenario missing"
+        st.session_state.hint = parts[1] if len(parts) > 1 else "Hint missing"
+        st.session_state.suggestions = parts[2] if len(parts) > 2 else "Options missing"
+    
+    return st.session_state.scenario, st.session_state.hint, st.session_state.suggestions
 
 # ✅ Streamlit UI
 st.title("🍽️ AI-Powered Restaurant Challenge 🍽️")
@@ -111,10 +124,7 @@ if player_name:
         update_leaderboard(player_name, score)
         display_leaderboard()
 
-        # Generate new scenario and trigger re-run
-        st.session_state.scenario = generate_ai_scenario()
-        st.session_state.rerun = True
-
-    if "rerun" in st.session_state:
-        del st.session_state.rerun
-        st.rerun()
+        if st.button("Next Scenario"):
+            st.session_state.scenario = generate_ai_scenario()
+            st.session_state.user_choice = None  # Reset selection
+            st.experimental_rerun()  # Ensures UI updates instantly
