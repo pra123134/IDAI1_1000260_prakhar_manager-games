@@ -1,132 +1,92 @@
 import streamlit as st
 import google.generativeai as genai
 
-# ✅ Configure API Key
+# ✅ Secure API Key Setup
 if "GOOGLE_API_KEY" in st.secrets:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
 else:
-    st.error("⚠️ API Key is missing. Go to Streamlit Cloud → Settings → Secrets and add your API key.")
+    st.error("⚠️ API Key is missing. Add your key to Streamlit Cloud → Settings → Secrets.")
     st.stop()
 
-def get_ai_response(prompt, fallback_message="⚠️ AI response unavailable. Please try again later."):
+# 🔁 Utility: AI response handler
+def get_ai_response(prompt, fallback="⚠️ AI response unavailable. Try again later."):
     try:
         model = genai.GenerativeModel("gemini-1.5-pro")
         response = model.generate_content(prompt)
-        return response.text.strip() if hasattr(response, "text") and response.text.strip() else fallback_message
+        return response.text.strip() if hasattr(response, "text") and response.text.strip() else fallback
     except Exception as e:
-        return f"⚠️ AI Error: {str(e)}\n{fallback_message}"
+        return f"⚠️ Error: {str(e)}\n{fallback}"
 
-# ---- AI Generation Functions ----
-def generate_case_study():
-    return get_ai_response("Create a realistic and complex restaurant management scenario involving staffing, inventory, and customer satisfaction for training purposes.")
+# 🔁 Scenario Generators
+def generate_case_study(module_topic):
+    return get_ai_response(f"Create a detailed restaurant management case study for the topic: {module_topic}. Include realistic operational and decision-making challenges.")
 
 def generate_hint(scenario):
-    return get_ai_response(f"Provide a brief and practical hint to handle the following restaurant management case study:\n\n{scenario}")
+    return get_ai_response(f"Provide a short hint to handle this restaurant scenario:\n\n{scenario}")
 
 def generate_guidance(scenario):
     return get_ai_response(f"""
-    Scenario: {scenario}
-    Give a structured manager-level solution including:
+    Restaurant Management Scenario:
+    {scenario}
+
+    You are a seasoned restaurant consultant. Provide:
+    - Structured approach to solve this case
     - Key decisions to consider
-    - Strategic actions
     - Best practices
-    - What to avoid
+    - Pitfalls to avoid
+    - A reflective question for managers
     """)
 
-def generate_test_question():
-    return get_ai_response("Generate a test case scenario for restaurant managers with a clear challenge. Ask the user how they would respond.")
+def generate_summary_notes(topic):
+    return get_ai_response(f"Summarize the key principles and strategies for restaurant managers under the topic: {topic}. Use bullet points.")
 
-def evaluate_test_response(question, user_answer):
-    prompt = f"""
-    Test Scenario: {question}
-    User's Response: {user_answer}
+# ✅ Master Course Structure
+modules = {
+    "Introduction to Smart Restaurant Management": "Overview of responsibilities, goals, and smart tools for restaurant managers.",
+    "Staffing & Team Leadership": "Hiring, training, scheduling, motivation, conflict resolution.",
+    "Customer Experience & Satisfaction": "Handling complaints, creating loyalty, ambiance design.",
+    "Inventory & Supply Chain": "Optimizing ordering, minimizing waste, vendor management.",
+    "AI & Technology Integration": "Using AI tools for menus, personalization, analytics, operations.",
+    "Financial Planning & Profitability": "Budgeting, pricing, cost control, revenue growth strategies.",
+    "Event & Promotion Strategy": "Event planning, marketing campaigns, community engagement.",
+    "Sustainability & Waste Reduction": "Eco-friendly practices, waste audits, innovation.",
+}
 
-    As a restaurant management expert, evaluate their answer. Provide:
-    - Evaluation summary
-    - Strengths in their response
-    - Areas for improvement
-    - Final performance feedback
-    - Score out of 10
-    """
-    return get_ai_response(prompt)
+# ✅ UI
+st.title("🎓 Restaurant Manager Master Course (AI-Powered)")
+st.sidebar.header("🗂️ Course Modules")
 
-# ---- Streamlit App UI ----
-st.set_page_config(page_title="Manager Upliftment Course", layout="centered")
-st.title("🚀 Restaurant Manager Upliftment Course with Generative AI")
+selected_module = st.sidebar.selectbox("Select a Module", list(modules.keys()))
 
-if "step" not in st.session_state:
-    st.session_state.step = 0
-if "case_studies" not in st.session_state:
-    st.session_state.case_studies = []
-if "test_question" not in st.session_state:
-    st.session_state.test_question = ""
-if "user_answer" not in st.session_state:
-    st.session_state.user_answer = ""
+st.subheader(f"📘 {selected_module}")
+st.markdown(f"_{modules[selected_module]}_")
 
-# ---- Step 0: Welcome ----
-if st.session_state.step == 0:
-    st.header("Welcome to the AI-Powered Manager Upliftment Course")
-    st.markdown("""
-    This short course uses Generative AI to:
-    - 🧠 Challenge your decision-making
-    - 📚 Sharpen your strategic thinking
-    - ✅ Help you grow as a better restaurant manager
-    
-    You'll go through **3 real-world scenarios** with AI guidance and complete a final **test** to receive personalized feedback.
-    """)
-    if st.button("Start Course"):
-        st.session_state.step = 1
+# ✅ Case Study Generator
+if st.button("🔄 Generate Case Study"):
+    st.session_state.case_study = generate_case_study(selected_module)
 
-# ---- Step 1–3: Case Studies ----
-elif 1 <= st.session_state.step <= 3:
-    case_index = st.session_state.step
-    st.header(f"📘 Module {case_index}: AI-Powered Case Study")
-    
-    if len(st.session_state.case_studies) < case_index:
-        scenario = generate_case_study()
-        hint = generate_hint(scenario)
-        guidance = generate_guidance(scenario)
-        st.session_state.case_studies.append((scenario, hint, guidance))
-    else:
-        scenario, hint, guidance = st.session_state.case_studies[case_index - 1]
+if "case_study" in st.session_state:
+    st.markdown("---")
+    st.subheader("📌 Case Study")
+    st.write(st.session_state.case_study)
 
-    st.subheader("📌 Scenario")
-    st.write(scenario)
-    
-    st.subheader("💡 Hint")
-    st.info(hint)
-    
-    st.subheader("🧭 Strategic Guidance")
-    st.write(guidance)
+    st.subheader("💡 Hint from AI")
+    st.info(generate_hint(st.session_state.case_study))
 
-    if st.button("Next Module"):
-        st.session_state.step += 1
+    st.subheader("🧠 AI Expert Strategy")
+    st.write(generate_guidance(st.session_state.case_study))
 
-# ---- Step 4: Final Test ----
-elif st.session_state.step == 4:
-    st.header("📝 Final Test: Apply Your Skills")
-    
-    if not st.session_state.test_question:
-        st.session_state.test_question = generate_test_question()
+    st.subheader("📝 Reflection Journal")
+    user_reflection = st.text_area("What would you do in this situation? How does it relate to your experience?", height=150)
 
-    st.subheader("📌 Test Scenario")
-    st.write(st.session_state.test_question)
+    if user_reflection:
+        st.success("Reflection saved locally for now. Export feature coming soon!")
 
-    st.session_state.user_answer = st.text_area("✍️ How would you handle this situation?", st.session_state.user_answer)
+    st.subheader("📒 Summary Notes")
+    st.markdown(generate_summary_notes(selected_module))
 
-    if st.button("Submit Test Response"):
-        st.session_state.step += 1
+# 🚀 Coming Soon:
+st.sidebar.markdown("---")
+st.sidebar.info("Coming Soon:\n- 🧾 Certification Quiz\n- 📥 PDF Export\n- 💬 Peer Discussion")
 
-# ---- Step 5: Performance Feedback ----
-elif st.session_state.step == 5:
-    st.header("📊 Your Performance Feedback")
-    with st.spinner("Evaluating your response..."):
-        feedback = evaluate_test_response(st.session_state.test_question, st.session_state.user_answer)
-    st.write(feedback)
-
-    if st.button("🔄 Restart Course"):
-        st.session_state.step = 0
-        st.session_state.case_studies = []
-        st.session_state.test_question = ""
-        st.session_state.user_answer = ""
