@@ -1,10 +1,7 @@
 import streamlit as st
-import pandas as pd
 import google.generativeai as genai
-import os
-import re
 
-# ✅ Configure API Key securely
+# ✅ Configure API Key
 if "GOOGLE_API_KEY" in st.secrets:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
@@ -12,15 +9,7 @@ else:
     st.error("⚠️ API Key is missing. Go to Streamlit Cloud → Settings → Secrets and add your API key.")
     st.stop()
 
-leaderboard_file = "leaderboard.csv"
-
-# ✅ Ensure the leaderboard file exists
-if not os.path.exists(leaderboard_file):
-    df_init = pd.DataFrame(columns=["Player", "Score"])
-    df_init.to_csv(leaderboard_file, index=False)
-
 def get_ai_response(prompt, fallback_message="⚠️ AI response unavailable. Please try again later."):
-    """Generates AI response using Gemini 1.5 Pro."""
     try:
         model = genai.GenerativeModel("gemini-1.5-pro")
         response = model.generate_content(prompt)
@@ -28,83 +17,116 @@ def get_ai_response(prompt, fallback_message="⚠️ AI response unavailable. Pl
     except Exception as e:
         return f"⚠️ AI Error: {str(e)}\n{fallback_message}"
 
-def generate_ai_scenario():
-    return get_ai_response("Create a realistic restaurant management scenario that requires decision-making.")
+# ---- AI Generation Functions ----
+def generate_case_study():
+    return get_ai_response("Create a realistic and complex restaurant management scenario involving staffing, inventory, and customer satisfaction for training purposes.")
 
-def get_ai_suggestions(scenario):
-    prompt = f"""
+def generate_hint(scenario):
+    return get_ai_response(f"Provide a brief and practical hint to handle the following restaurant management case study:\n\n{scenario}")
+
+def generate_guidance(scenario):
+    return get_ai_response(f"""
     Scenario: {scenario}
-    Generate 4 multiple-choice response options labeled A, B, C, and D.
-    Ensure the options are realistic and applicable to restaurant management.
+    Give a structured manager-level solution including:
+    - Key decisions to consider
+    - Strategic actions
+    - Best practices
+    - What to avoid
+    """)
+
+def generate_test_question():
+    return get_ai_response("Generate a test case scenario for restaurant managers with a clear challenge. Ask the user how they would respond.")
+
+def evaluate_test_response(question, user_answer):
+    prompt = f"""
+    Test Scenario: {question}
+    User's Response: {user_answer}
+
+    As a restaurant management expert, evaluate their answer. Provide:
+    - Evaluation summary
+    - Strengths in their response
+    - Areas for improvement
+    - Final performance feedback
+    - Score out of 10
     """
     return get_ai_response(prompt)
 
-def get_ai_feedback(scenario, user_choice):
-    prompt = f"""
-    Scenario: {scenario}
-    User's Response: {user_choice}
+# ---- Streamlit App UI ----
+st.set_page_config(page_title="Manager Upliftment Course", layout="centered")
+st.title("🚀 Restaurant Manager Upliftment Course with Generative AI")
 
-    Provide:
-    - A brief evaluation of the response
-    - Pros and cons of the choice
-    - A better alternative if applicable
-    - A motivational message if they get it right!
-    - Assign a score from 0 to 10 based on correctness (Ensure you return only one score at the end as 'Score: X').
-    """
-    feedback = get_ai_response(prompt)
-    score = extract_score(feedback)
-    return feedback, score
+if "step" not in st.session_state:
+    st.session_state.step = 0
+if "case_studies" not in st.session_state:
+    st.session_state.case_studies = []
+if "test_question" not in st.session_state:
+    st.session_state.test_question = ""
+if "user_answer" not in st.session_state:
+    st.session_state.user_answer = ""
 
-def get_ai_hint(scenario):
-    prompt = f"Give a short hint for handling this restaurant scenario wisely: {scenario}"
-    return get_ai_response(prompt)
+# ---- Step 0: Welcome ----
+if st.session_state.step == 0:
+    st.header("Welcome to the AI-Powered Manager Upliftment Course")
+    st.markdown("""
+    This short course uses Generative AI to:
+    - 🧠 Challenge your decision-making
+    - 📚 Sharpen your strategic thinking
+    - ✅ Help you grow as a better restaurant manager
+    
+    You'll go through **3 real-world scenarios** with AI guidance and complete a final **test** to receive personalized feedback.
+    """)
+    if st.button("Start Course"):
+        st.session_state.step = 1
 
-def extract_score(feedback):
-    match = re.search(r'Score:\s*(\d+)', feedback)
-    return int(match.group(1)) if match else 0
-
-def update_leaderboard(player, score):
-    df = pd.read_csv(leaderboard_file)
-    if player in df["Player"].values:
-        df.loc[df["Player"] == player, "Score"] += score
+# ---- Step 1–3: Case Studies ----
+elif 1 <= st.session_state.step <= 3:
+    case_index = st.session_state.step
+    st.header(f"📘 Module {case_index}: AI-Powered Case Study")
+    
+    if len(st.session_state.case_studies) < case_index:
+        scenario = generate_case_study()
+        hint = generate_hint(scenario)
+        guidance = generate_guidance(scenario)
+        st.session_state.case_studies.append((scenario, hint, guidance))
     else:
-        df = pd.concat([df, pd.DataFrame({"Player": [player], "Score": [score]})], ignore_index=True)
-    df.to_csv(leaderboard_file, index=False)
+        scenario, hint, guidance = st.session_state.case_studies[case_index - 1]
 
-def display_leaderboard():
-    df = pd.read_csv(leaderboard_file).sort_values(by="Score", ascending=False)
-    st.subheader("🏆 Leaderboard 🏆")
-    st.dataframe(df)
+    st.subheader("📌 Scenario")
+    st.write(scenario)
+    
+    st.subheader("💡 Hint")
+    st.info(hint)
+    
+    st.subheader("🧭 Strategic Guidance")
+    st.write(guidance)
 
-# ✅ Streamlit UI
-st.title("🍽️ AI-Powered Restaurant Challenge 🍽️")
-player_name = st.text_input("🎮 Enter your name:")
+    if st.button("Next Module"):
+        st.session_state.step += 1
 
-if player_name:
-    if "scenario" not in st.session_state:
-        st.session_state.scenario = generate_ai_scenario()
+# ---- Step 4: Final Test ----
+elif st.session_state.step == 4:
+    st.header("📝 Final Test: Apply Your Skills")
     
-    st.subheader("📌 AI-Generated Scenario:")
-    st.write(st.session_state.scenario)
-    
-    hint = get_ai_hint(st.session_state.scenario)
-    st.info(f"💡 AI Hint: {hint}")
-    
-    ai_suggestions = get_ai_suggestions(st.session_state.scenario)
-    st.subheader("🤖 AI-Suggested Responses:")
-    st.write(ai_suggestions)
-    
-    user_choice = st.radio("Select your choice:", ["A", "B", "C", "D"], key="user_choice")
-    
-    if st.button("Submit Choice"):
-        ai_feedback, score = get_ai_feedback(st.session_state.scenario, user_choice)
-        st.subheader("🤖 AI Feedback:")
-        st.write(ai_feedback)
-        st.success(f"🏅 Score Assigned by AI: {score} Points")
-        
-        update_leaderboard(player_name, score)
-        display_leaderboard()
-        
-        # Generate new scenario only after feedback is shown
-        st.session_state.scenario = generate_ai_scenario()
-        st.experimental_rerun()
+    if not st.session_state.test_question:
+        st.session_state.test_question = generate_test_question()
+
+    st.subheader("📌 Test Scenario")
+    st.write(st.session_state.test_question)
+
+    st.session_state.user_answer = st.text_area("✍️ How would you handle this situation?", st.session_state.user_answer)
+
+    if st.button("Submit Test Response"):
+        st.session_state.step += 1
+
+# ---- Step 5: Performance Feedback ----
+elif st.session_state.step == 5:
+    st.header("📊 Your Performance Feedback")
+    with st.spinner("Evaluating your response..."):
+        feedback = evaluate_test_response(st.session_state.test_question, st.session_state.user_answer)
+    st.write(feedback)
+
+    if st.button("🔄 Restart Course"):
+        st.session_state.step = 0
+        st.session_state.case_studies = []
+        st.session_state.test_question = ""
+        st.session_state.user_answer = ""
